@@ -75,8 +75,6 @@ sub write_status_files(){
     || $$a{groupName} cmp $$b{groupName}
   } @convGroups;
 
-  log_info(join " ", map {$$_{display}} @convGroups);
-
   my $groupOther = {
     groupName => 'other',
     regex     => undef,
