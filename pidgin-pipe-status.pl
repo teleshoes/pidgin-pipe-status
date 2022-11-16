@@ -35,6 +35,7 @@ my $STATE = {
   CURRENT_STATUS_NAME   => undef,
   CONFIG => {
     mtime => undef,
+    ignored_regex => undef,
   },
 };
 
@@ -64,18 +65,22 @@ sub write_status_files(){
   my $currentStatusName = $$STATE{CURRENT_STATUS_NAME};
   $currentStatusName = "Unknown" if not defined $currentStatusName;
 
+  my $ignoredTitleRegex = $$STATE{CONFIG}{ignored_regex};
   my $anyUnseen = 0;
   my $unseenTitlesFmt = "";
   for my $convName(sort keys %convs){
     my $conv = $convs{$convName};
     if($$conv{unseen}){
-      $anyUnseen = 1;
-
       my $title = $$conv{title};
       $title =~ s/[\r\n]/ /g;
       $title =~ s/^\s+//;
       $title =~ s/\s+$//;
-      $unseenTitlesFmt .= "$title\n";
+      if(defined $ignoredTitleRegex and $title =~ $ignoredTitleRegex){
+        log_info("ignored: $title");
+      }else{
+        $anyUnseen = 1;
+        $unseenTitlesFmt .= "$title\n";
+      }
     }
   }
 
@@ -191,6 +196,7 @@ sub maybe_load_config(){
 
 sub load_config(){
   $$STATE{CONFIG}{mtime} = undef;
+  $$STATE{CONFIG}{ignored_regex} = undef;
 
   if(-e $FILE_CONFIG){
     open my $fh, "< $FILE_CONFIG"
@@ -207,6 +213,15 @@ sub load_config(){
 
       if($line eq ""){
         next;
+      }elsif($line =~ /^\s*ignored\.regex\s*=\s*(.*)$/){
+        my $regex = $1;
+        $regex =~ s/^\s+$//;
+        $regex =~ s/\s+$//;
+        if($regex eq ""){
+          $$STATE{CONFIG}{ignored_regex} = undef;
+        }else{
+          $$STATE{CONFIG}{ignored_regex} = eval { qr/$regex/ };
+        }
       }else{
         log_info("ERROR: invalid config line: $line");
       }
