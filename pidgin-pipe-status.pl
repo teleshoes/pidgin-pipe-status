@@ -36,6 +36,7 @@ my $STATE = {
   CONFIG => {
     mtime => undef,
     ignored_regex => undef,
+    conv_groups => {},
   },
 };
 
@@ -66,8 +67,25 @@ sub write_status_files(){
   $currentStatusName = "Unknown" if not defined $currentStatusName;
 
   my $ignoredTitleRegex = $$STATE{CONFIG}{ignored_regex};
-  my $anyUnseen = 0;
+
+  my @convGroups = values %{$$STATE{CONFIG}{conv_groups}};
+  @convGroups = sort {
+    0
+    || $$b{priority} <=> $$a{priority}
+    || $$a{groupName} cmp $$b{groupName}
+  } @convGroups;
+
+  log_info(join " ", map {$$_{display}} @convGroups);
+
+  my $groupOther = {
+    groupName => 'other',
+    regex     => undef,
+    display   => "NEW",
+    priority  => 0,
+  };
+
   my $unseenTitlesFmt = "";
+  my $selectedUnseenGroup;
   for my $convName(sort keys %convs){
     my $conv = $convs{$convName};
     if($$conv{unseen}){
@@ -75,16 +93,32 @@ sub write_status_files(){
       $title =~ s/[\r\n]/ /g;
       $title =~ s/^\s+//;
       $title =~ s/\s+$//;
+
+      my $group;
+      for my $convGroup(@convGroups){
+        if($title =~ $$convGroup{regex}){
+          $group = $convGroup;
+          last;
+        }
+      }
+      if(not defined $group){
+        $group = $groupOther;
+      }
+
       if(defined $ignoredTitleRegex and $title =~ $ignoredTitleRegex){
         log_info("ignored: $title");
       }else{
-        $anyUnseen = 1;
         $unseenTitlesFmt .= "$title\n";
+        $selectedUnseenGroup = $group if not defined $selectedUnseenGroup;
+        $selectedUnseenGroup = $group if $$group{priority} > $$selectedUnseenGroup{priority};
       }
     }
   }
 
-  my $statusFmt = $anyUnseen ? "NEW\n" : "$currentStatusName\n";
+  my $statusFmt = "$currentStatusName\n";
+  if(defined $selectedUnseenGroup){
+    $statusFmt = "$$selectedUnseenGroup{display}\n";
+  }
 
   write_file($FILE_STATUS, $statusFmt);
   write_file($FILE_CONVS, $unseenTitlesFmt);
@@ -197,6 +231,7 @@ sub maybe_load_config(){
 sub load_config(){
   $$STATE{CONFIG}{mtime} = undef;
   $$STATE{CONFIG}{ignored_regex} = undef;
+  $$STATE{CONFIG}{conv_groups} = {};
 
   if(-e $FILE_CONFIG){
     open my $fh, "< $FILE_CONFIG"
@@ -222,9 +257,41 @@ sub load_config(){
         }else{
           $$STATE{CONFIG}{ignored_regex} = eval { qr/$regex/ };
         }
+      }elsif($line =~ /^\s*conv\.(\w+)\.(regex|display|priority)\s*=\s*(.*)$/){
+        my ($groupName, $field, $value) = ($1, $2, $3);
+        $value =~ s/^\s*//;
+        $value =~ s/\s*$//;
+
+        if(not defined $$STATE{CONFIG}{conv_groups}{$groupName}){
+          $$STATE{CONFIG}{conv_groups}{$groupName} = {
+            groupName => $groupName,
+          };
+        }
+
+        if($field eq "regex"){
+          $value = eval{ qr/$value/ };
+        }elsif($field eq "priority"){
+          if($value !~ /^-?\d+$/){
+            $value = undef;
+          }
+        }
+
+        if(not defined $value){
+          log_info("ERROR: malformed conversation group config value: $line");
+        }else{
+          $$STATE{CONFIG}{conv_groups}{$groupName}{$field} = $value;
+        }
       }else{
         log_info("ERROR: invalid config line: $line");
       }
+    }
+
+    for my $groupName(sort keys %{$$STATE{CONFIG}{conv_groups}}){
+      my $invalid = 0;
+      $invalid = 1 if not defined $$STATE{CONFIG}{conv_groups}{$groupName}{regex};
+      $invalid = 1 if not defined $$STATE{CONFIG}{conv_groups}{$groupName}{display};
+      $invalid = 1 if not defined $$STATE{CONFIG}{conv_groups}{$groupName}{priority};
+      delete $$STATE{CONFIG}{conv_groups}{$groupName} if $invalid;
     }
   }
 }
