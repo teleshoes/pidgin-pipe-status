@@ -35,8 +35,10 @@ my $STATE = {
   CURRENT_STATUS_NAME   => undef,
 };
 
-my $FILE_STATUS = "$ENV{HOME}/.purple/plugins/pipe-status";
-my $FILE_UNSEEN_CONVS = "$ENV{HOME}/.purple/plugins/pipe-unseen-convs";
+my $PLUGINS_DIR = "$ENV{HOME}/.purple/plugins";
+
+my $FILE_STATUS = "$PLUGINS_DIR/$PLUGIN_INFO{name}-pipe-status";
+my $FILE_CONVS  = "$PLUGINS_DIR/$PLUGIN_INFO{name}-pipe-convs";
 
 sub write_status_files();
 sub on_account_status_changed($$$);
@@ -71,7 +73,7 @@ sub write_status_files(){
   my $statusFmt = $anyUnseen ? "NEW\n" : "$currentStatusName\n";
 
   write_file($FILE_STATUS, $statusFmt);
-  write_file($FILE_UNSEEN_CONVS, $unseenTitlesFmt);
+  write_file($FILE_CONVS, $unseenTitlesFmt);
 }
 
 sub on_account_status_changed($$$){
