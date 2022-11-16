@@ -33,10 +33,14 @@ use Purple;
 my $STATE = {
   CONVERSATIONS_BY_NAME => {},
   CURRENT_STATUS_NAME   => undef,
+  CONFIG => {
+    mtime => undef,
+  },
 };
 
 my $PLUGINS_DIR = "$ENV{HOME}/.purple/plugins";
 
+my $FILE_CONFIG = "$PLUGINS_DIR/$PLUGIN_INFO{name}-config.properties";
 my $FILE_STATUS = "$PLUGINS_DIR/$PLUGIN_INFO{name}-pipe-status";
 my $FILE_CONVS  = "$PLUGINS_DIR/$PLUGIN_INFO{name}-pipe-convs";
 
@@ -47,9 +51,14 @@ sub plugin_init();
 sub plugin_load($);
 sub plugin_unload($);
 sub log_info($);
+sub maybe_load_config();
+sub load_config();
 sub write_file($$);
+sub mtime($);
 
 sub write_status_files(){
+  maybe_load_config();
+
   my %convs = %{$$STATE{CONVERSATIONS_BY_NAME}};
 
   my $currentStatusName = $$STATE{CURRENT_STATUS_NAME};
@@ -171,6 +180,40 @@ sub log_info($){
   Purple::Debug::info($PLUGIN_INFO{name}, $str);
 }
 
+sub maybe_load_config(){
+  my $mtime = mtime $FILE_CONFIG;
+  my $prevMtime = $$STATE{CONFIG}{mtime};
+  if(not defined $mtime or not defined $prevMtime or $mtime != $prevMtime){
+    log_info("loading config");
+    load_config();
+  }
+}
+
+sub load_config(){
+  $$STATE{CONFIG}{mtime} = undef;
+
+  if(-e $FILE_CONFIG){
+    open my $fh, "< $FILE_CONFIG"
+      or log_info("ERROR: could not read $FILE_CONFIG\n$!\n");
+    my @lines = <$fh>;
+    close $fh;
+    $$STATE{CONFIG}{mtime} = mtime $FILE_CONFIG;
+
+    for my $line(@lines){
+      chomp $line;
+      $line =~ s/#.*//;
+      $line =~ s/^\s*//;
+      $line =~ s/\s*$//;
+
+      if($line eq ""){
+        next;
+      }else{
+        log_info("ERROR: invalid config line: $line");
+      }
+    }
+  }
+}
+
 sub write_file($$){
   my ($file, $contents) = @_;
   my $fh;
@@ -186,3 +229,12 @@ sub write_file($$){
   close $fh;
 }
 
+sub mtime($){
+  my ($file) = @_;
+  if(-e $file){
+    my @stat = stat $file;
+    return $stat[9];
+  }else{
+    return undef;
+  }
+}
