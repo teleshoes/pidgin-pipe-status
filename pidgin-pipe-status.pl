@@ -199,7 +199,16 @@ sub plugin_load($){
   );
 
   my $curStatus = Purple::SavedStatus::get_current();
-  $$STATE{CURRENT_STATUS_NAME} = $curStatus->get_title() if defined $curStatus;
+
+  #Purple::SavedStatus::get_current()
+  #  sometimes returns a Purple::SavedStatus
+  #  that somehow does not have get_title()
+  my $statusName = eval {$curStatus->get_title()};
+  if(not defined $statusName){
+    $statusName = "NONE";
+  }
+
+  $$STATE{CURRENT_STATUS_NAME} = $statusName;
   log_info("UPDATE status=$$STATE{CURRENT_STATUS_NAME}");
   write_status_files();
 }
